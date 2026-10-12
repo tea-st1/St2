@@ -1,0 +1,1011 @@
+-- ====================================================================
+-- CHI CHI WORLD - AUTOMATION & UTILITIES FULL SCRIPT
+-- ====================================================================
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local Events = ReplicatedStorage:WaitForChild("Events", 5) or ReplicatedStorage
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- --------------------------------------------------------------------
+-- UI LIBRARY DEFINITION
+-- --------------------------------------------------------------------
+local UI = {}
+UI.__index = UI
+
+function UI:NewWindow(title)
+    local self = setmetatable({}, UI)
+    
+    self.MainGui = Instance.new("ScreenGui")
+    self.MainGui.Name = "ChiChiWorldUI"
+    self.MainGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    self.MainGui.ResetOnSpawn = false
+    self.MainGui.Parent = PlayerGui
+    
+    self.Window = Instance.new("Frame")
+    self.Window.Name = "MainWindow"
+    self.Window.Size = UDim2.new(0, 160, 0, 150)
+    self.Window.Position = UDim2.new(0.1, 0, 0.1, 0)
+    self.Window.BackgroundTransparency = 1
+    self.Window.BorderSizePixel = 0
+    self.Window.ClipsDescendants = true
+    self.Window.Parent = self.MainGui
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = self.Window
+    
+    self.TitleBar = Instance.new("Frame")
+    self.TitleBar.Name = "TitleBar"
+    self.TitleBar.Size = UDim2.new(1, 0, 0, 30)
+    self.TitleBar.BackgroundColor3 = Color3.fromRGB(36, 36, 42)
+    self.TitleBar.Parent = self.Window
+    
+    self.TitleText = Instance.new("TextLabel")
+    self.TitleText.Name = "TitleText"
+    self.TitleText.Size = UDim2.new(1, -30, 1, 0)
+    self.TitleText.Position = UDim2.new(0, 8, 0, 0)
+    self.TitleText.BackgroundTransparency = 1
+    self.TitleText.Text = title
+    self.TitleText.Font = Enum.Font.SourceSansBold
+    self.TitleText.TextSize = 14
+    self.TitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    self.TitleText.TextXAlignment = Enum.TextXAlignment.Left
+    self.TitleText.Parent = self.TitleBar
+    
+    self.CollapseBtn = Instance.new("TextButton")
+    self.CollapseBtn.Name = "CollapseBtn"
+    self.CollapseBtn.Size = UDim2.new(0, 30, 1, 0)
+    self.CollapseBtn.Position = UDim2.new(1, -30, 0, 0)
+    self.CollapseBtn.BackgroundTransparency = 1
+    self.CollapseBtn.Text = "-"
+    self.CollapseBtn.Font = Enum.Font.SourceSansBold
+    self.CollapseBtn.TextSize = 16
+    self.CollapseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    self.CollapseBtn.Parent = self.TitleBar
+    
+    self.ContentContainer = Instance.new("Frame")
+    self.ContentContainer.Name = "ContentContainer"
+    self.ContentContainer.Size = UDim2.new(1, 0, 1, -30)
+    self.ContentContainer.Position = UDim2.new(0, 0, 0, 30)
+    self.ContentContainer.BackgroundTransparency = 1
+    self.ContentContainer.Parent = self.Window
+    
+    self.MenuContainer = Instance.new("Frame")
+    self.MenuContainer.Size = UDim2.new(1, 0, 0, 0)
+    self.MenuContainer.BackgroundTransparency = 1
+    self.MenuContainer.Parent = self.ContentContainer
+    
+    self:MakeDraggable()
+    
+    self.IsCollapsed = false
+    self.CollapseBtn.MouseButton1Click:Connect(function()
+        self:ToggleCollapse()
+    end)
+    
+    self.Sections = {}
+    self.CurrentY = 0
+    return self
+end
+
+function UI:MakeDraggable()
+    local dragging = false
+    local dragStart = Vector2.new()
+    local startPos = UDim2.new()
+    self.TitleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = self.Window.Position
+            UserInputService.MouseIconEnabled = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            self.Window.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+            UserInputService.MouseIconEnabled = true
+        end
+    end)
+end
+
+function UI:ToggleCollapse()
+    self.IsCollapsed = not self.IsCollapsed
+    if self.IsCollapsed then
+        for _, section in ipairs(self.Sections) do
+            if section.IsExpanded then
+                section.IsExpanded = false
+                section.ToggleBtn.Text = "+"
+                TweenService:Create(section.Content, TweenInfo.new(0.2), {
+                    Size = UDim2.new(1, 0, 0, 0)
+                }):Play()
+                self.CurrentY = self.CurrentY - section.ContentY
+            end
+        end
+        TweenService:Create(self.Window, TweenInfo.new(0.2), {
+            Size = UDim2.new(0, 160, 0, 35)
+        }):Play()
+        self.CollapseBtn.Text = "+"
+        self.ContentContainer.Visible = false
+    else
+        self.CurrentY = 0
+        local currentOffset = 0
+        for _, section in ipairs(self.Sections) do
+            section.Frame.Position = UDim2.new(0, 0, 0, currentOffset)
+            section.Content.Position = UDim2.new(0, 0, 0, currentOffset + 35)
+            currentOffset = currentOffset + 35
+            self.CurrentY = self.CurrentY + 35
+        end
+        self.MenuContainer.Size = UDim2.new(1, 0, 0, self.CurrentY)
+        local newHeight = math.max(160, 30 + self.CurrentY + 5)
+        TweenService:Create(self.Window, TweenInfo.new(0.2), {
+            Size = UDim2.new(0, 160, 0, newHeight)
+        }):Play()
+        self.CollapseBtn.Text = "-"
+        task.wait(0.2)
+        self.ContentContainer.Visible = true
+    end
+end
+
+function UI:NewSection(title)
+    local section = {}
+    section.Title = title
+    section.Frame = Instance.new("Frame")
+    section.Frame.Size = UDim2.new(1, 0, 0, 35)
+    section.Frame.Position = UDim2.new(0, 0, 0, self.CurrentY)
+    section.Frame.BackgroundColor3 = Color3.fromRGB(36, 36, 42)
+    section.Frame.Parent = self.MenuContainer
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = section.Frame
+    
+    section.TitleText = Instance.new("TextLabel")
+    section.TitleText.Size = UDim2.new(1, -40, 1, 0)
+    section.TitleText.Position = UDim2.new(0, 10, 0, 0)
+    section.TitleText.BackgroundTransparency = 1
+    section.TitleText.Text = title
+    section.TitleText.Font = Enum.Font.SourceSansBold
+    section.TitleText.TextSize = 16
+    section.TitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    section.TitleText.TextXAlignment = Enum.TextXAlignment.Left
+    section.TitleText.Parent = section.Frame
+    
+    section.ToggleBtn = Instance.new("TextButton")
+    section.ToggleBtn.Size = UDim2.new(0, 20, 1, 0)
+    section.ToggleBtn.Position = UDim2.new(1, -20, 0, 0)
+    section.ToggleBtn.BackgroundTransparency = 1
+    section.ToggleBtn.Text = "+"
+    section.ToggleBtn.Font = Enum.Font.SourceSansBold
+    section.ToggleBtn.TextSize = 18
+    section.ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    section.ToggleBtn.Parent = section.Frame
+    
+    section.Content = Instance.new("Frame")
+    section.Content.Size = UDim2.new(1, 0, 0, 0)
+    section.Content.Position = UDim2.new(0, 0, 0, self.CurrentY + 35)
+    section.Content.BackgroundTransparency = 1
+    section.Content.ClipsDescendants = true
+    section.Content.Parent = self.MenuContainer
+    
+    section.IsExpanded = false
+    section.Buttons = {}
+    section.ContentY = 0
+    
+    self.CurrentY = self.CurrentY + 35
+    self.MenuContainer.Size = UDim2.new(1, 0, 0, self.CurrentY)
+    
+    local newHeight = math.max(160, 30 + self.CurrentY + 5)
+    TweenService:Create(self.Window, TweenInfo.new(0.2), {
+        Size = UDim2.new(0, 160, 0, newHeight)
+    }):Play()
+    
+    self.ContentContainer.Size = UDim2.new(1, 0, 1, -30)
+    
+    function section:CreateToggle(text, callback)
+        local btn = Instance.new("TextButton")
+        btn.Name = "ToggleBtn_" .. text
+        
+        local buttonIndex = #section.Buttons
+        local row = math.floor(buttonIndex / 2)
+        local col = buttonIndex % 2
+        btn.Size = UDim2.new(0.5, 0, 0, 30)
+        btn.Position = UDim2.new(col * 0.5, col * 0, 0, row * 30)
+        btn.BackgroundColor3 = Color3.fromRGB(44, 44, 50)
+        btn.BackgroundTransparency = 0
+        btn.Parent = section.Content
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 4)
+        corner.Parent = btn
+        
+        local btnText = Instance.new("TextLabel")
+        btnText.Size = UDim2.new(1, 0, 1, 0)
+        btnText.Position = UDim2.new(0, 0, 0, 0)
+        btnText.BackgroundTransparency = 1
+        btnText.Text = text
+        btnText.Font = Enum.Font.SourceSans
+        btnText.TextSize = 14
+        btnText.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btnText.TextXAlignment = Enum.TextXAlignment.Center
+        btnText.Parent = btn
+        
+        local toggleState = false
+        
+        btn.MouseButton1Click:Connect(function()
+            toggleState = not toggleState
+            local newColor = toggleState and Color3.fromRGB(60, 180, 60) or Color3.fromRGB(44, 44, 50)
+            TweenService:Create(btn, TweenInfo.new(0.1), {
+                BackgroundColor3 = newColor
+            }):Play()
+            task.spawn(function()
+                callback(toggleState)
+            end)
+        end)
+        
+        if col == 0 then
+            section.ContentY = section.ContentY + 30
+        end
+        table.insert(section.Buttons, btn)
+        return btn
+    end
+    
+    section.ToggleBtn.MouseButton1Click:Connect(function()
+        section.IsExpanded = not section.IsExpanded
+        if section.IsExpanded then
+            section.ToggleBtn.Text = "-"
+            TweenService:Create(section.Content, TweenInfo.new(0.2), { Size = UDim2.new(1, 0, 0, section.ContentY) }):Play()
+            self.CurrentY = self.CurrentY + section.ContentY
+        else
+            section.ToggleBtn.Text = "+"
+            TweenService:Create(section.Content, TweenInfo.new(0.2), { Size = UDim2.new(1, 0, 0, 0) }):Play()
+            self.CurrentY = self.CurrentY - section.ContentY
+        end
+        
+        for _, sec in ipairs(self.Sections) do
+            if sec ~= section and sec.Frame.Position.Y.Offset > section.Frame.Position.Y.Offset then
+                TweenService:Create(sec.Frame, TweenInfo.new(0.2), {
+                    Position = UDim2.new(0, 0, 0, sec.Frame.Position.Y.Offset + (section.IsExpanded and section.ContentY or -section.ContentY))
+                }):Play()
+                TweenService:Create(sec.Content, TweenInfo.new(0.2), {
+                    Position = UDim2.new(0, 0, 0, sec.Content.Position.Y.Offset + (section.IsExpanded and section.ContentY or -section.ContentY))
+                }):Play()
+            end
+        end
+        
+        local newHeight = math.max(160, 30 + self.CurrentY + 5)
+        TweenService:Create(self.Window, TweenInfo.new(0.2), { Size = UDim2.new(0, 160, 0, newHeight) }):Play()
+    end)
+    
+    table.insert(self.Sections, section)
+    return section
+end
+
+-- --------------------------------------------------------------------
+-- MAIN WINDOW & SECTIONS
+-- --------------------------------------------------------------------
+local mainUI = UI:NewWindow("ChiChi World Hub")
+local autoSection = mainUI:NewSection("Automation")
+local figureSection = mainUI:NewSection("Character")
+
+-- --------------------------------------------------------------------
+-- AUTOMATION LOGIC
+-- --------------------------------------------------------------------
+local farm, collect, claim = false, false, false
+local autoClaimRewards = false
+local autoeat = false
+local fc, cc
+local mapFolder, chunksFolder
+
+local function stopFarm()
+    farm = false
+    if fc then fc:Disconnect(); fc = nil end
+    local b = workspace:FindFirstChild("ETW_AutoFarmBedrock")
+    if b then b:Destroy() end
+
+    if mapFolder then mapFolder.Parent = workspace end
+    if chunksFolder then chunksFolder.Parent = workspace end
+end
+
+local function startFarm()
+    if fc then fc:Disconnect() end
+    local c = LocalPlayer.Character
+    if not c then return end
+    local h = c:FindFirstChild("Humanoid")
+    local r = c:FindFirstChild("HumanoidRootPart")
+    local s = c:FindFirstChild("Size")
+    local e = c:FindFirstChild("Events")
+    local ch = c:FindFirstChild("CurrentChunk")
+    local st = c:FindFirstChild("SendTrack")
+    local rad = c:FindFirstChild("Radius")
+    
+    if not (h and r and s and e and ch and st and rad) then return end
+    local eat = e:FindFirstChild("Eat")
+    local grab = e:FindFirstChild("Grab")
+    local sell = e:FindFirstChild("Sell")
+    if not (eat and grab and sell) then return end
+    
+    local bed = Instance.new("Part")
+    bed.Name = "ETW_AutoFarmBedrock"
+    bed.Anchored = true
+    bed.Size = Vector3.new(2048, 10, 2048)
+    bed.Position = Vector3.new(0, -5, 0)
+    bed.Parent = workspace
+    
+    local n, t, g = 0, 0, 0
+    
+    local m = workspace:FindFirstChild("Map")
+    local chk = workspace:FindFirstChild("Chunks")
+    if m then mapFolder = m; m.Parent = nil end
+    if chk then chunksFolder = chk; chk.Parent = nil end
+
+    fc = RunService.Heartbeat:Connect(function(dt)
+        if not farm or not c.Parent or h.Health <= 0 then stopFarm(); return end
+
+        if workspace:FindFirstChild("Loading") then
+            workspace.Loading:Destroy()
+        end
+        local currentMap = workspace:FindFirstChild("Map")
+        local currentChunks = workspace:FindFirstChild("Chunks")
+        if currentMap then mapFolder = currentMap; currentMap.Parent = nil end
+        if currentChunks then chunksFolder = currentChunks; currentChunks.Parent = nil end
+
+        local up = LocalPlayer:FindFirstChild("Upgrades")
+        local max = up and up:FindFirstChild("MaxSize")
+        if not max then return end
+        
+        h:ChangeState(Enum.HumanoidStateType.Physics)
+        r.Anchored = false
+        grab:FireServer()
+        eat:FireServer()
+        st:FireServer()
+        
+        if ch.Value then 
+            if t > 0 then n += 1 end
+            t = 0
+            g += dt 
+        else 
+            t += dt
+            g = 0 
+        end
+        
+        if t > 60 then h.Health = 0; t = 0; n = 0 end
+        if g > 15 then s.Value = max.Value end
+        
+        if s.Value >= max.Value or t > 8 then
+            if t < 8 then sell:FireServer() end
+            Events.SetServerSettings:FireServer({MapTime = -1, Paused = true})
+            n = 0
+        elseif s.Value == 0 then end
+        
+        local bound = 300
+        local y = bed.Position.Y + bed.Size.Y / 2 + h.HipHeight + r.Size.Y / 2
+        local rr = rad.Value * 1.1
+        local d = rr * n
+        local x = d % bound
+        local z = math.floor(d / bound) * rr
+        
+        if z > bound then 
+            Events.SetServerSettings:FireServer({MapTime = -1, Paused = true})
+            n = 0 
+        end
+        r.CFrame = CFrame.new(-bound / 2 + x, y, -bound / 2 + z + rr * 2)
+    end)
+end
+
+local function setFarm(v)
+    if v then farm = true; startFarm() else stopFarm() end
+end
+
+local function setCollect(v)
+    collect = v
+    if v and not cc then
+        cc = task.spawn(function()
+            local ps = LocalPlayer:FindFirstChild("PlayerScripts")
+            local cv = ps and ps:FindFirstChild("CubeVis")
+            if cv then cv.Enabled = false end
+            while collect do
+                task.wait()
+                local c = LocalPlayer.Character
+                local r = c and c:FindFirstChild("HumanoidRootPart")
+                if r then 
+                    for _, x in ipairs(workspace:GetChildren()) do
+                        if x.Name == "Cube" and x:FindFirstChild("Owner") and (x.Owner.Value == LocalPlayer.Name or x.Owner.Value == "") then 
+                            x.CFrame = r.CFrame 
+                        end
+                    end 
+                end
+            end
+            if cv then cv.Enabled = true end
+            cc = nil
+        end)
+    end
+end
+
+local function setClaim(v)
+    claim = v
+    if v then 
+        task.spawn(function()
+            while claim do
+                task.wait(1)
+                local tr = LocalPlayer:FindFirstChild("TimedRewards")
+                if tr then 
+                    for _, reward in ipairs(tr:GetChildren()) do
+                        if reward:IsA("ValueBase") and reward.Value > 0 then 
+                            Events.RewardEvent:FireServer(reward) 
+                        end
+                    end 
+                end
+                local spin = Events:FindFirstChild("SpinEvent")
+                if spin then spin:FireServer() end
+            end
+        end) 
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    if farm then
+        startFarm()
+    end
+end)
+
+autoSection:CreateToggle("AFK", function(enabled)
+    setFarm(enabled)
+    setCollect(enabled)
+    setClaim(enabled)
+end)
+
+autoSection:CreateToggle("Auto Claim", function(enabled)
+    autoClaimRewards = enabled
+    if not autoClaimRewards then return end
+    task.spawn(function()
+        while autoClaimRewards do
+            task.wait(1)
+            if LocalPlayer:FindFirstChild("TimedRewards") then
+                for _, reward in ipairs(LocalPlayer.TimedRewards:GetChildren()) do
+                    if reward.Value > 0 then
+                        Events.RewardEvent:FireServer(reward)
+                    end
+                end
+            end
+            if Events:FindFirstChild("SpinEvent") then
+                Events.SpinEvent:FireServer()
+            end
+        end
+    end)
+end)
+
+autoSection:CreateToggle("Auto Eat", function(enabled)
+    autoeat = enabled
+    if not autoeat then return end
+    task.spawn(function()
+        while autoeat do
+            task.wait()
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChild("Humanoid") and char:FindFirstChild("Events") then
+                if char:FindFirstChild("HumanoidRootPart") then char.HumanoidRootPart.Anchored = false end
+                if char.Events:FindFirstChild("Grab") then char.Events.Grab:FireServer() end
+                if char.Events:FindFirstChild("Eat") then char.Events.Eat:FireServer() end
+            end
+        end
+    end)
+end)
+
+-- --------------------------------------------------------------------
+-- FIGURE SECTION (Character)
+-- --------------------------------------------------------------------
+local keepUnanchor = false
+figureSection:CreateToggle("Unanchor", function(enabled)
+    keepUnanchor = enabled
+    if keepUnanchor then
+        task.spawn(function()
+            while keepUnanchor do
+                task.wait()
+                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    LocalPlayer.Character.HumanoidRootPart.Anchored = false
+                end
+            end
+        end)
+    end
+end)
+
+local isMounted = false
+local savedSpeed = 16
+local savedJump = 50
+
+figureSection:CreateToggle("Mount/Lock", function(enabled)
+    isMounted = enabled
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    
+    if isMounted and hum and root then
+        savedSpeed = hum.WalkSpeed
+        savedJump = hum.JumpPower
+        hum.WalkSpeed = 0
+        hum.JumpPower = 0
+        hum.AutoRotate = false
+        root.Anchored = true
+    elseif hum and root then
+        root.Anchored = false
+        hum.WalkSpeed = savedSpeed
+        hum.JumpPower = savedJump
+        hum.AutoRotate = true
+    end
+end)
+
+local antiFallEnabled = false
+local antiFallConnection = nil
+
+figureSection:CreateToggle("Anti Fall", function(enabled)
+    antiFallEnabled = enabled
+    if antiFallEnabled then
+        workspace.FallenPartsDestroyHeight = -999999
+        if not antiFallConnection then
+            antiFallConnection = RunService.Heartbeat:Connect(function()
+                if not antiFallEnabled then return end
+                local char = LocalPlayer.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then
+                    local root = char.HumanoidRootPart
+                    if root.Position.Y < -100 then
+                        root.CFrame = CFrame.new(root.Position.X, 50, root.Position.Z)
+                        root.Velocity = Vector3.new(0, 0, 0)
+                    end
+                end
+            end)
+        end
+    else
+        if antiFallConnection then
+            antiFallConnection:Disconnect()
+            antiFallConnection = nil
+        end
+        workspace.FallenPartsDestroyHeight = -500
+    end
+end)
+
+local speedUI = nil
+local speedLevels = {50, 200, 400, 600, 800, 1000, 1500, 2000, 2500, 3000, 4000, 5000}
+
+local function ShowSpeedUI()
+    if speedUI then speedUI:Destroy() speedUI = nil end
+    
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "SpeedMenuUI"
+    gui.ResetOnSpawn = false
+    gui.Parent = PlayerGui
+    
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 260, 0, 220)
+    frame.Position = UDim2.new(0.5, -130, 0.5, -110)
+    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    frame.Active = true
+    frame.Draggable = true
+    frame.Parent = gui
+    
+    local corner = Instance.new("UICorner", frame)
+    corner.CornerRadius = UDim.new(0, 8)
+    
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 30)
+    title.BackgroundTransparency = 1
+    title.Text = "Speed Menu (50 - 5000)"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.Font = Enum.Font.SourceSansBold
+    title.TextSize = 16
+    title.Parent = frame
+    
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Size = UDim2.new(1, -20, 1, -40)
+    scroll.Position = UDim2.new(0, 10, 0, 35)
+    scroll.BackgroundTransparency = 1
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 180)
+    scroll.Parent = frame
+    
+    local grid = Instance.new("UIGridLayout")
+    grid.CellSize = UDim2.new(0, 70, 0, 30)
+    grid.CellPadding = UDim2.new(0, 5, 0, 5)
+    grid.SortOrder = Enum.SortOrder.LayoutOrder
+    grid.Parent = scroll
+    
+    for _, spd in ipairs(speedLevels) do
+        local btn = Instance.new("TextButton")
+        btn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+        btn.Text = tostring(spd)
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btn.Font = Enum.Font.SourceSansBold
+        btn.TextSize = 13
+        btn.Parent = scroll
+        
+        local btnCorner = Instance.new("UICorner", btn)
+        btnCorner.CornerRadius = UDim.new(0, 4)
+        
+        btn.MouseButton1Click:Connect(function()
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+                LocalPlayer.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = spd
+            end
+        end)
+    end
+    speedUI = gui
+end
+
+figureSection:CreateToggle("Speed", function(enabled)
+    if enabled then ShowSpeedUI() else if speedUI then speedUI:Destroy() speedUI = nil end end
+end)
+
+local gravityLockEnabled = false
+figureSection:CreateToggle("Gravity Lock", function(enabled)
+    gravityLockEnabled = enabled
+    if gravityLockEnabled then
+        task.spawn(function()
+            while gravityLockEnabled do
+                task.wait()
+                workspace.Gravity = 99999999
+            end
+            workspace.Gravity = 196.2
+        end)
+    else
+        workspace.Gravity = 196.2
+    end
+end)
+
+-- --------------------------------------------------------------------
+-- TELEPORT GRAB INTEGRATION
+-- --------------------------------------------------------------------
+local teleportGrabUI = nil
+
+local function getCurrency()
+    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+    if leaderstats then
+        for _, v in ipairs(leaderstats:GetChildren()) do
+            if v:IsA("IntValue") or v:IsA("NumberValue") then return v.Value end
+        end
+    end
+    return 0
+end
+
+local function grabForwardObject()
+    local character = LocalPlayer.Character
+    if not character then return end
+    local events = character:FindFirstChild("Events")
+    if events and events:FindFirstChild("Grab") then
+        events.Grab:FireServer(false, false, true)
+    end
+end
+
+local function CreateTeleportGrabUI()
+    if teleportGrabUI then
+        teleportGrabUI:Destroy()
+    end
+
+    teleportGrabUI = Instance.new("ScreenGui")
+    teleportGrabUI.Name = "PlayerTeleportTool"
+    teleportGrabUI.ResetOnSpawn = false
+    teleportGrabUI.Parent = PlayerGui
+
+    local main = Instance.new("Frame")
+    main.Size = UDim2.new(0, 200, 0, 300)
+    main.Position = UDim2.new(0.5, -100, 0.5, -150)
+    main.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    main.BorderSizePixel = 0
+    main.Parent = teleportGrabUI
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = main
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -40, 0, 35)
+    title.Position = UDim2.new(0, 10, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "Teleport Grab"
+    title.TextColor3 = Color3.new(1, 1, 1)
+    title.TextSize = 18
+    title.Font = Enum.Font.SourceSansBold
+    title.Parent = main
+
+    local close = Instance.new("TextButton")
+    close.Size = UDim2.new(0, 30, 0, 30)
+    close.Position = UDim2.new(1, -35, 0, 3)
+    close.BackgroundTransparency = 1
+    close.Text = "X"
+    close.TextColor3 = Color3.new(1, 1, 1)
+    close.TextSize = 18
+    close.Parent = main
+
+    close.MouseButton1Click:Connect(function()
+        teleportGrabUI:Destroy()
+        teleportGrabUI = nil
+    end)
+
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Size = UDim2.new(1, -20, 1, -50)
+    scroll.Position = UDim2.new(0, 10, 0, 40)
+    scroll.BackgroundTransparency = 1
+    scroll.BorderSizePixel = 0
+    scroll.ScrollBarThickness = 5
+    scroll.Parent = main
+
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 5)
+    layout.Parent = scroll
+
+    local function refresh()
+        for _, child in ipairs(scroll:GetChildren()) do
+            if child:IsA("TextButton") then
+                child:Destroy()
+            end
+        end
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                local button = Instance.new("TextButton")
+                button.Size = UDim2.new(1, -5, 0, 32)
+                button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+                button.TextColor3 = Color3.new(1, 1, 1)
+                button.Text = player.Name
+                button.TextSize = 14
+                button.Font = Enum.Font.SourceSans
+                button.Parent = scroll
+
+                local buttonCorner = Instance.new("UICorner")
+                buttonCorner.CornerRadius = UDim.new(0, 5)
+                buttonCorner.Parent = button
+
+                button.MouseButton1Click:Connect(function()
+                    local character = LocalPlayer.Character
+                    local targetCharacter = player.Character
+
+                    if not character or not targetCharacter then
+                        return
+                    end
+
+                    local humanoid = character:FindFirstChildOfClass("Humanoid")
+                    local root = character:FindFirstChild("HumanoidRootPart")
+                    local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
+
+                    if not humanoid
+                        or humanoid.Health <= 0
+                        or not root
+                        or not targetRoot then
+                        return
+                    end
+
+                    grabForwardObject()
+                    task.wait(0.2)
+
+                    local behindPosition = targetRoot.Position - targetRoot.CFrame.LookVector * 15
+                    root.CFrame = CFrame.new(behindPosition, targetRoot.Position)
+                end)
+            end
+        end
+
+        task.wait()
+        scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 5)
+    end
+
+    Players.PlayerAdded:Connect(refresh)
+    Players.PlayerRemoving:Connect(refresh)
+    refresh()
+
+    local dragging = false
+    local dragStart, startPosition
+
+    main.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPosition = main.Position
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            main.Position = UDim2.new(startPosition.X.Scale, startPosition.X.Offset + delta.X, startPosition.Y.Scale, startPosition.Y.Offset + delta.Y)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+end
+
+figureSection:CreateToggle("Teleport/Grab", function(enabled)
+    if enabled then
+        CreateTeleportGrabUI()
+    else
+        if teleportGrabUI then
+            teleportGrabUI:Destroy()
+            teleportGrabUI = nil
+        end
+    end
+end)
+
+-- --------------------------------------------------------------------
+-- X-RAY / ESP LOGIC
+-- --------------------------------------------------------------------
+local espEnabled = false
+local espConnections = {}
+local playerInfos = {}
+
+local function cleanupESPForPlayer(player)
+    if not player then return end
+    local info = playerInfos[player.UserId]
+    if not info then return end
+
+    if info.billboardGui and info.billboardGui.Parent then
+        info.billboardGui:Destroy()
+    end
+
+    if info.character and info.character.Parent then
+        for _, part in ipairs(info.character:GetDescendants()) do
+            if part.Name == "ESPSurface" then
+                part:Destroy()
+            end
+        end
+    end
+
+    playerInfos[player.UserId] = nil
+end
+
+local function createESPForPlayer(player)
+    if not player or player == LocalPlayer then return end
+    local character = player.Character
+    if not character or not character:FindFirstChild("Head") then return end
+
+    cleanupESPForPlayer(player)
+
+    for _, part in ipairs(character:GetChildren()) do
+        if (part:IsA("MeshPart") or part:IsA("Part")) and part.Name ~= "HumanoidRootPart" then
+            for _, face in ipairs({
+                Enum.NormalId.Front,
+                Enum.NormalId.Back,
+                Enum.NormalId.Left,
+                Enum.NormalId.Right,
+                Enum.NormalId.Top,
+                Enum.NormalId.Bottom
+            }) do
+                local surfaceGui = Instance.new("SurfaceGui")
+                surfaceGui.Name = "ESPSurface"
+                surfaceGui.Face = face
+                surfaceGui.AlwaysOnTop = true
+                surfaceGui.Parent = part
+
+                local frame = Instance.new("Frame")
+                frame.Size = UDim2.new(1, 0, 1, 0)
+                frame.BackgroundColor3 = Color3.new(1, 0, 0)
+                frame.BackgroundTransparency = 0.5
+                frame.BorderSizePixel = 0
+                frame.Parent = surfaceGui
+            end
+        end
+    end
+
+    local head = character:FindFirstChild("Head")
+    if head then
+        local billboardGui = Instance.new("BillboardGui")
+        billboardGui.Name = "ESPNameTag"
+        billboardGui.Adornee = head
+        billboardGui.Size = UDim2.new(0, 200, 0, 40)
+        billboardGui.StudsOffset = Vector3.new(0, 3, 0)
+        billboardGui.AlwaysOnTop = true
+        billboardGui.Parent = head
+
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Size = UDim2.new(1, 0, 0, 20)
+        nameLabel.Font = Enum.Font.SourceSansBold
+        nameLabel.Text = player.Name
+        nameLabel.TextColor3 = Color3.new(1, 0, 0)
+        nameLabel.TextSize = 14
+        nameLabel.Parent = billboardGui
+
+        local displayNameLabel = Instance.new("TextLabel")
+        displayNameLabel.BackgroundTransparency = 1
+        displayNameLabel.Position = UDim2.new(0, 0, 0, 20)
+        displayNameLabel.Size = UDim2.new(1, 0, 0, 20)
+        displayNameLabel.Font = Enum.Font.SourceSans
+        displayNameLabel.Text = player.DisplayName
+        displayNameLabel.TextColor3 = Color3.new(1, 1, 1)
+        displayNameLabel.TextSize = 12
+        displayNameLabel.Parent = billboardGui
+
+        playerInfos[player.UserId] = {
+            character = character,
+            billboardGui = billboardGui
+        }
+    else
+        playerInfos[player.UserId] = { character = character }
+    end
+end
+
+local function updateESP()
+    if not espEnabled then return end
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local character = player.Character
+            if character and character:FindFirstChild("Head") then
+                local info = playerInfos[player.UserId]
+                if not info or info.character ~= character then
+                    createESPForPlayer(player)
+                end
+            else
+                cleanupESPForPlayer(player)
+            end
+        end
+    end
+end
+
+local function stopESP()
+    for _, connection in ipairs(espConnections) do
+        if connection and connection.Connected then
+            connection:Disconnect()
+        end
+    end
+    espConnections = {}
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            cleanupESPForPlayer(player)
+        end
+    end
+end
+
+local function startESP()
+    stopESP()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            createESPForPlayer(player)
+            table.insert(espConnections, player.CharacterAdded:Connect(function()
+                task.wait(0.5)
+                if espEnabled then createESPForPlayer(player) end
+            end))
+        end
+    end
+
+    table.insert(espConnections, Players.PlayerAdded:Connect(function(player)
+        if player == LocalPlayer then return end
+        table.insert(espConnections, player.CharacterAdded:Connect(function()
+            task.wait(0.5)
+            if espEnabled then createESPForPlayer(player) end
+        end))
+        task.defer(function()
+            if espEnabled then createESPForPlayer(player) end
+        end)
+    end))
+
+    table.insert(espConnections, Players.PlayerRemoving:Connect(function(player)
+        cleanupESPForPlayer(player)
+    end))
+    table.insert(espConnections, RunService.RenderStepped:Connect(updateESP))
+end
+
+figureSection:CreateToggle("X-Ray", function(enabled)
+    espEnabled = enabled
+    if espEnabled then
+        startESP()
+    else
+        stopESP()
+    end
+end)
