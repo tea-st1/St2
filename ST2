@@ -510,6 +510,129 @@ autoSection:CreateToggle("Auto Eat", function(enabled)
 end)
 
 -- --------------------------------------------------------------------
+-- VIEW DATA LOGIC (TÍCH HỢP TỪ SOURCE 3)
+-- --------------------------------------------------------------------
+local localization = {
+    MaxSize = "MaxSize",
+    Speed = "Speed",
+    Multiplier = "Multiplier",
+    EatSpeed = "EatSpeed",
+}
+
+local function sizeGrowth(level)
+    return math.floor(((level + 0.5) ^ 2 - 0.25) / 2 * 100)
+end
+
+local function speedGrowth(level)
+    return math.floor(level * 2 + 10)
+end
+
+local function multiplierGrowth(level)
+    return math.floor(level)
+end
+
+local function eatSpeedGrowth(level)
+    return math.floor((1 + (level - 1) * 0.2) * 10) / 10
+end
+
+local function sizePrice(level)
+    return math.floor(level ^ 3 / 2) * 20
+end
+
+local function speedPrice(level)
+    return math.floor((level * 3) ^ 3 / 200) * 1000
+end
+
+local function multiplierPrice(level)
+    return math.floor((level * 10) ^ 3 / 200) * 1000
+end
+
+local function eatSpeedPrice(level)
+    return math.floor((level * 10) ^ 3 / 200) * 2000
+end
+
+local growthFunctions = {
+    MaxSize = sizeGrowth,
+    Speed = speedGrowth,
+    Multiplier = multiplierGrowth,
+    EatSpeed = eatSpeedGrowth,
+}
+
+local priceFunctions = {
+    MaxSize = sizePrice,
+    Speed = speedPrice,
+    Multiplier = multiplierPrice,
+    EatSpeed = eatSpeedPrice,
+}
+
+local function showPlayerData()
+    print("=======================================")
+    print("Viewing player data")
+    print("=======================================")
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        print("")
+        print("Player: " .. player.Name)
+        print("=======================================")
+
+        local hasUpgrades = false
+        local upgrades = player:FindFirstChild("Upgrades")
+
+        if upgrades then
+            for _, upg in ipairs(upgrades:GetChildren()) do
+                local growthFunction = growthFunctions[upg.Name]
+                local priceFunction = priceFunctions[upg.Name]
+
+                if growthFunction and priceFunction and tonumber(upg.Value) then
+                    hasUpgrades = true
+
+                    local level = tonumber(upg.Value)
+                    local cost = 0
+
+                    for l = 2, level do
+                        cost += priceFunction(l)
+                    end
+
+                    local content =
+                        "  " ..
+                        localization[upg.Name] ..
+                        ": " ..
+                        level ..
+                        " level; " ..
+                        growthFunction(level) ..
+                        " value; " ..
+                        cost ..
+                        " cost"
+
+                    print(content)
+                else
+                    hasUpgrades = true
+                    print("  " .. upg.Name .. ": " .. tostring(upg.Value))
+                end
+            end
+        end
+
+        if not hasUpgrades then
+            print("  No upgrade data available at the moment")
+        end
+    end
+
+    print("=======================================")
+    print("Data viewing completed")
+    print("=======================================")
+
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("DevConsoleVisible", true)
+    end)
+end
+
+autoSection:CreateToggle("View Data", function(enabled)
+    if enabled then
+        showPlayerData()
+    end
+end)
+
+-- --------------------------------------------------------------------
 -- FIGURE SECTION (Character)
 -- --------------------------------------------------------------------
 local keepUnanchor = false
@@ -582,73 +705,192 @@ figureSection:CreateToggle("Anti Fall", function(enabled)
     end
 end)
 
+-- --------------------------------------------------------------------
+-- SPEED MATRIX INTEGRATION (THAY THẾ CHUẨN CHO NÚT SPEED)
+-- --------------------------------------------------------------------
 local speedUI = nil
-local speedLevels = {50, 200, 400, 600, 800, 1000, 1500, 2000, 2500, 3000, 4000, 5000}
+local TargetSpeed = 16
+local AntiReset = false
 
-local function ShowSpeedUI()
-    if speedUI then speedUI:Destroy() speedUI = nil end
-    
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "SpeedMenuUI"
-    gui.ResetOnSpawn = false
-    gui.Parent = PlayerGui
-    
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 260, 0, 220)
-    frame.Position = UDim2.new(0.5, -130, 0.5, -110)
-    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-    frame.Active = true
-    frame.Draggable = true
-    frame.Parent = gui
-    
-    local corner = Instance.new("UICorner", frame)
-    corner.CornerRadius = UDim.new(0, 8)
-    
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, 0, 0, 30)
-    title.BackgroundTransparency = 1
-    title.Text = "Speed Menu (50 - 5000)"
-    title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    title.Font = Enum.Font.SourceSansBold
-    title.TextSize = 16
-    title.Parent = frame
-    
-    local scroll = Instance.new("ScrollingFrame")
-    scroll.Size = UDim2.new(1, -20, 1, -40)
-    scroll.Position = UDim2.new(0, 10, 0, 35)
-    scroll.BackgroundTransparency = 1
-    scroll.CanvasSize = UDim2.new(0, 0, 0, 180)
-    scroll.Parent = frame
-    
-    local grid = Instance.new("UIGridLayout")
-    grid.CellSize = UDim2.new(0, 70, 0, 30)
-    grid.CellPadding = UDim2.new(0, 5, 0, 5)
-    grid.SortOrder = Enum.SortOrder.LayoutOrder
-    grid.Parent = scroll
-    
-    for _, spd in ipairs(speedLevels) do
-        local btn = Instance.new("TextButton")
-        btn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-        btn.Text = tostring(spd)
-        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        btn.Font = Enum.Font.SourceSansBold
-        btn.TextSize = 13
-        btn.Parent = scroll
-        
-        local btnCorner = Instance.new("UICorner", btn)
-        btnCorner.CornerRadius = UDim.new(0, 4)
-        
-        btn.MouseButton1Click:Connect(function()
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-                LocalPlayer.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = spd
-            end
-        end)
+local function ForceEvadeSpeed(speed)
+    local p = LocalPlayer
+    if not p.Character then return end
+    local humanoid = p.Character:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        pcall(function() humanoid.WalkSpeed = speed end)
     end
-    speedUI = gui
+    pcall(function()
+        for _, v in ipairs(p.Character:GetDescendants()) do
+            if v:IsA("NumberValue") or v:IsA("IntValue") then
+                local name = string.lower(v.Name)
+                if string.find(name, "speed") or string.find(name, "walk") or string.find(name, "run") then
+                    v.Value = speed
+                end
+            end
+        end
+    end)
 end
 
+task.spawn(function()
+    while true do
+        if AntiReset and TargetSpeed ~= 16 then 
+            ForceEvadeSpeed(TargetSpeed) 
+        end
+        task.wait(0.02)
+    end
+end)
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(0.5)
+    if AntiReset and TargetSpeed ~= 16 then
+        ForceEvadeSpeed(TargetSpeed)
+    end
+end)
+
 figureSection:CreateToggle("Speed", function(enabled)
-    if enabled then ShowSpeedUI() else if speedUI then speedUI:Destroy() speedUI = nil end end
+    if enabled then
+        if speedUI then speedUI:Destroy() speedUI = nil end
+        
+        local ScreenGui = Instance.new("ScreenGui")
+        ScreenGui.Name = "UniversalSpeedGridMenu"
+        ScreenGui.ResetOnSpawn = false
+        ScreenGui.Parent = PlayerGui
+
+        local MainFrame = Instance.new("Frame")
+        MainFrame.Name = "MainFrame"
+        MainFrame.Size = UDim2.new(0, 260, 0, 260)
+        MainFrame.Position = UDim2.new(0.5, -130, 0.3, 0)
+        MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        MainFrame.BorderSizePixel = 0
+        MainFrame.Active = true
+        MainFrame.Draggable = true
+        MainFrame.Parent = ScreenGui
+
+        local Corner = Instance.new("UICorner")
+        Corner.CornerRadius = UDim.new(0, 10)
+        Corner.Parent = MainFrame
+
+        local TitleBar = Instance.new("TextLabel")
+        TitleBar.Size = UDim2.new(1, 0, 0, 35)
+        TitleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        TitleBar.Text = "   ⚡ SPEED MATRIX (EVADE FIX)"
+        TitleBar.TextColor3 = Color3.fromRGB(255, 255, 255)
+        TitleBar.TextXAlignment = Enum.TextXAlignment.Left
+        TitleBar.Font = Enum.Font.SourceSansBold
+        TitleBar.TextSize = 14
+        TitleBar.BorderSizePixel = 0
+        TitleBar.Parent = MainFrame
+
+        local TitleCorner = Instance.new("UICorner")
+        TitleCorner.CornerRadius = UDim.new(0, 10)
+        TitleCorner.Parent = TitleBar
+
+        local MinBtn = Instance.new("TextButton")
+        MinBtn.Size = UDim2.new(0, 35, 0, 35)
+        MinBtn.Position = UDim2.new(1, -35, 0, 0)
+        MinBtn.BackgroundTransparency = 1
+        MinBtn.Text = "−"
+        MinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        MinBtn.TextSize = 22
+        MinBtn.Font = Enum.Font.SourceSansBold
+        MinBtn.Parent = MainFrame
+
+        local Container = Instance.new("Frame")
+        Container.Size = UDim2.new(1, -16, 1, -50)
+        Container.Position = UDim2.new(0, 8, 0, 42)
+        Container.BackgroundTransparency = 1
+        Container.Parent = MainFrame
+
+        local Grid = Instance.new("UIGridLayout")
+        Grid.CellSize = UDim2.new(0, 56, 0, 45)
+        Grid.CellPadding = UDim2.new(0, 6, 0, 6)
+        Grid.Parent = Container
+
+        local isMinimized = false
+        MinBtn.MouseButton1Click:Connect(function()
+            isMinimized = not isMinimized
+            if isMinimized then
+                Container.Visible = false
+                MainFrame:TweenSize(UDim2.new(0, 260, 0, 35), "Out", "Quad", 0.15, true)
+                MinBtn.Text = "+"
+            else
+                MainFrame:TweenSize(UDim2.new(0, 260, 0, 260), "Out", "Quad", 0.15, true)
+                task.wait(0.15)
+                Container.Visible = true
+                MinBtn.Text = "−"
+            end
+        end)
+
+        local speeds = {100, 200, 400, 500, 600, 800, 1000, 1500}
+        for _, sp in ipairs(speeds) do
+            local Btn = Instance.new("TextButton")
+            Btn.BackgroundColor3 = Color3.fromRGB(40, 43, 48)
+            Btn.Text = tostring(sp)
+            Btn.TextColor3 = Color3.fromRGB(255, 198, 84)
+            Btn.Font = Enum.Font.SourceSansBold
+            Btn.TextSize = 16
+            Btn.BorderSizePixel = 0
+            Btn.Parent = Container
+            
+            local btnCorner = Instance.new("UICorner")
+            btnCorner.CornerRadius = UDim.new(0, 6)
+            btnCorner.Parent = Btn
+
+            Btn.MouseButton1Click:Connect(function()
+                TargetSpeed = sp
+                ForceEvadeSpeed(sp)
+            end)
+        end
+
+        local ResetBtn = Instance.new("TextButton")
+        ResetBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+        ResetBtn.Text = "RESET"
+        ResetBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        ResetBtn.Font = Enum.Font.SourceSansBold
+        ResetBtn.TextSize = 14
+        ResetBtn.Parent = Container
+
+        local rCorner = Instance.new("UICorner")
+        rCorner.CornerRadius = UDim.new(0, 6)
+        rCorner.Parent = ResetBtn
+
+        ResetBtn.MouseButton1Click:Connect(function()
+            TargetSpeed = 16
+            AntiReset = false
+            ForceEvadeSpeed(16)
+        end)
+
+        local ToggleBtn = Instance.new("TextButton")
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 100, 40)
+        ToggleBtn.Text = "LOCK"
+        ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        ToggleBtn.Font = Enum.Font.SourceSansBold
+        ToggleBtn.TextSize = 14
+        ToggleBtn.Parent = Container
+
+        local tCorner = Instance.new("UICorner")
+        tCorner.CornerRadius = UDim.new(0, 6)
+        tCorner.Parent = ToggleBtn
+
+        ToggleBtn.MouseButton1Click:Connect(function()
+            AntiReset = not AntiReset
+            if AntiReset then
+                ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
+                ToggleBtn.Text = "LOCKED"
+                ForceEvadeSpeed(TargetSpeed)
+            else
+                ToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 100, 40)
+                ToggleBtn.Text = "LOCK"
+            end
+        end)
+
+        speedUI = ScreenGui
+    else
+        if speedUI then speedUI:Destroy(); speedUI = nil end
+        TargetSpeed = 16
+        AntiReset = false
+        ForceEvadeSpeed(16)
+    end
 end)
 
 local gravityLockEnabled = false
